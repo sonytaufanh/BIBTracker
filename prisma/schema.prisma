@@ -1,0 +1,297 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+//  USER & AUTH
+// ============================================================
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         String   @default("viewer")
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  events             UserEvent[]
+  verifiedDetections BIBDetection[] @relation("VerifiedBy")
+  apiKeys            ApiKey[]
+
+  @@index([role])
+}
+
+model UserEvent {
+  userId  String
+  eventId String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@id([userId, eventId])
+  @@index([eventId])
+}
+
+model ApiKey {
+  id         String    @id @default(uuid())
+  userId     String
+  name       String
+  keyHash    String    @unique
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ============================================================
+//  EVENT
+// ============================================================
+
+model Event {
+  id                String   @id @default(uuid())
+  name              String
+  slug              String   @unique
+  eventDate         DateTime
+  status            String   @default("upcoming")
+  location          String
+  description       String?
+  logoUrl           String?
+  watermarkLogoUrl  String?
+  watermarkEnabled  Boolean  @default(true)
+  watermarkPosition String   @default("bottom_right")
+  watermarkOpacity  Float    @default(0.8)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  photos         Photo[]
+  participants   Participant[]
+  scanJobs       OCRScanJob[]
+  ingestionLogs  IngestionLog[]
+  shareableLinks ShareableLink[]
+  userEvents     UserEvent[]
+  checkpoints    Checkpoint[]
+
+  @@index([status])
+  @@index([eventDate])
+}
+
+model Checkpoint {
+  id         String   @id @default(uuid())
+  eventId    String
+  name       String
+  sequence   Int
+  distanceKm Float?
+  cutoffTime Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  event  Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  photos Photo[]
+
+  @@unique([eventId, sequence])
+  @@index([eventId])
+}
+
+// ============================================================
+//  PHOTO
+// ============================================================
+
+model Photo {
+  id               String   @id @default(uuid())
+  eventId          String
+  checkpointId     String?
+  filename         String
+  sourcePath       String
+  thumbnailUrl     String
+  fullUrl          String
+  storageAdapter   String   @default("local")
+  fileSize         Int
+  width            Int
+  height           Int
+  exifTimestamp    DateTime?
+  detectedAt       DateTime?
+  processingStatus String   @default("pending")
+  checksum         String?  @unique
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  event      Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  checkpoint Checkpoint?    @relation(fields: [checkpointId], references: [id], onDelete: SetNull)
+  detections BIBDetection[]
+
+  @@index([eventId])
+  @@index([processingStatus])
+  @@index([detectedAt])
+  @@index([eventId, processingStatus])
+  @@index([eventId, detectedAt])
+}
+
+// ============================================================
+//  BIB DETECTION
+// ============================================================
+
+model BIBDetection {
+  id              String   @id @default(uuid())
+  photoId         String
+  bibNumber       String
+  confidenceScore Float
+  status          String   @default("unverified")
+  ocrEngine       String
+  bboxX           Float?
+  bboxY           Float?
+  bboxWidth       Float?
+  bboxHeight      Float?
+  detectedAt      DateTime @default(now())
+  verifiedAt      DateTime?
+  verifiedById    String?
+  participantId   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  photo       Photo        @relation(fields: [photoId], references: [id], onDelete: Cascade)
+  verifiedBy  User?        @relation("VerifiedBy", fields: [verifiedById], references: [id], onDelete: SetNull)
+  participant Participant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+
+  @@index([photoId])
+  @@index([bibNumber])
+  @@index([status])
+  @@index([confidenceScore])
+  @@index([detectedAt])
+  @@index([participantId])
+  @@index([bibNumber, detectedAt])
+  @@index([bibNumber, status])
+  @@index([status, confidenceScore])
+}
+
+// ============================================================
+//  PARTICIPANT
+// ============================================================
+
+model Participant {
+  id               String   @id @default(uuid())
+  eventId          String
+  bibNumber        String
+  fullName         String
+  email            String?
+  phone            String?
+  gender           String?
+  category         String?
+  team             String?
+  emergencyContact String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  event      Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  detections BIBDetection[]
+
+  @@unique([eventId, bibNumber])
+  @@index([eventId])
+  @@index([bibNumber])
+  @@index([eventId, bibNumber])
+  @@index([fullName])
+}
+
+// ============================================================
+//  OCR SCAN JOB
+// ============================================================
+
+model OCRScanJob {
+  id              String    @id @default(uuid())
+  eventId         String
+  engine          String
+  status          String    @default("idle")
+  totalPhotos     Int       @default(0)
+  processedPhotos Int       @default(0)
+  detectedBibs    Int       @default(0)
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([status])
+  @@index([eventId, status])
+}
+
+// ============================================================
+//  INGESTION LOG
+// ============================================================
+
+model IngestionLog {
+  id           String   @id @default(uuid())
+  eventId      String
+  adapter      String
+  status       String   @default("pending")
+  filesFound   Int      @default(0)
+  filesSynced  Int      @default(0)
+  filesSkipped Int      @default(0)
+  filesFailed  Int      @default(0)
+  startedAt    DateTime @default(now())
+  completedAt  DateTime?
+  errorMessage String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([status])
+}
+
+// ============================================================
+//  SHAREABLE LINK
+// ============================================================
+
+model ShareableLink {
+  id        String    @id @default(uuid())
+  token     String    @unique
+  bibNumber String
+  eventId   String
+  viewCount Int       @default(0)
+  expiresAt DateTime?
+  createdAt DateTime  @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([bibNumber])
+  @@index([eventId])
+  @@index([token])
+}
+
+// ============================================================
+//  EXPORT JOB (for bulk watermark + ZIP export)
+// ============================================================
+
+model ExportJob {
+  id              String   @id @default(uuid())
+  eventId         String
+  userId          String
+  bibNumbers      String
+  photoIds        String
+  status          String   @default("pending")
+  totalPhotos     Int      @default(0)
+  processedPhotos Int      @default(0)
+  downloadUrl     String?
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  errorMessage    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([eventId])
+  @@index([status])
+  @@index([userId])
+}

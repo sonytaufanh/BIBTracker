@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+  }
+
+  body {
+    @apply bg-gray-50 text-gray-900 antialiased;
+  }
+
+  .dark body {
+    @apply bg-gray-950 text-gray-100;
+  }
+}
+
+@layer components {
+  .bib-badge {
+    @apply inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold;
+  }
+
+  .card-base {
+    @apply rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900;
+  }
+
+  .input-base {
+    @apply w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm
+      focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500
+      dark:border-gray-700 dark:bg-gray-800;
+  }
+}
